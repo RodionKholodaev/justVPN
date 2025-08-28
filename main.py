@@ -14,6 +14,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMINS = [int(admin_id) for admin_id in os.getenv("ADMINS", "").split(",") if admin_id.strip()]
 PHONE_NUMBER = os.getenv("PHONE_NUMBER")
 DATA_FILE = os.getenv("DATA_FILE", "users.json")
+vpn_link=os.getenv("vpn_link")
+
 
 # ===== ХРАНИЛКА =====
 try:
@@ -105,7 +107,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         end_date = (datetime.now() + timedelta(days=plan["days"])).strftime("%Y-%m-%d")
-        vpn_link = f"ss://{uuid.uuid4()}@91.184.248.35:443#VPN-{target_user_id}"
+
 
         users_data[target_user_id]["is_paid"] = True
         users_data[target_user_id]["subscription_end"] = end_date
