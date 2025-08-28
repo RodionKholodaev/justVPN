@@ -23,7 +23,6 @@ WINDOWS_PHOTO_PATH = "windows.png"  # Загрузите фото Hiddify
 IOS_PHOTO_PATH = "ios.jpg"  # Загрузите фото Streisand
 MACOS_PHOTO_PATH = "macos.jpg"  # Загрузите фото Streisand (то же, что и для iOS)
 
-# ===== ХРАНИЛКА =====
 try:
     with open(DATA_FILE, "r") as f:
         users_data = json.load(f)
@@ -133,11 +132,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users_data[target_user_id]["vpn_config_link"] = vpn_link
         save_data()
 
-        # Отправляем подтверждение и сразу спрашиваем о устройстве
+        # Отправляем подтверждение без vpn_link и сразу спрашиваем о устройстве
         text_prefix = (
             f"✅ Оплата подтверждена!\n"
             f"Подписка активна до {end_date}.\n\n"
-            f"Ваша VPN ссылка (нажмите, чтобы скопировать):\n`{vpn_link}`\n\n"
         )
         await send_device_selection(chat_id=int(target_user_id), context=context, text_prefix=text_prefix)
         await query.edit_message_text("Платёж подтвержден ✅")
@@ -147,13 +145,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_info.get("is_paid"):
             text_prefix = (
                 f"📅 Подписка активна до {user_info['subscription_end']}\n\n"
-                f"🔗 Ваша ссылка (нажмите, чтобы скопировать):\n`{user_info['vpn_config_link']}`\n\n"
             )
-            # Отправляем новое сообщение с выбором устройства (поскольку edit_message_text не позволяет добавить клавиатуру отдельно)
+            # Отправляем новое сообщение с выбором устройства
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=text_prefix + "На каком устройстве вам нужно подключить VPN?",
-                parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("Android", callback_data="device_android")],
                     [InlineKeyboardButton("Windows", callback_data="device_windows")],
@@ -161,7 +157,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("macOS", callback_data="device_macos")]
                 ])
             )
-            # Удаляем оригинальное сообщение с кнопкой, чтобы избежать дубликатов
+            # Удаляем оригинальное сообщение с кнопкой
             await query.delete_message()
         else:
             await query.edit_message_text("У вас нет активной подписки.")
@@ -189,11 +185,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             app_link = "https://apps.apple.com/us/app/streisand/id6450534064"
             photo_path = MACOS_PHOTO_PATH
 
-        # Кнопки под фото
+        # Кнопки под фото, включая "Назад"
         keyboard = [
             [InlineKeyboardButton(f"Скачать {app_name}", url=app_link)],
-            [InlineKeyboardButton("Перенести подписку", callback_data=f"transfer_{device}")],  # Заглушка для будущего
-            [InlineKeyboardButton("Подключить вручную", callback_data=f"manual_{device}")]  # Заглушка для будущего
+            [InlineKeyboardButton("Перенести подписку", callback_data=f"transfer_{device}")],
+            [InlineKeyboardButton("Подключить вручную", callback_data=f"manual_{device}")],
+            [InlineKeyboardButton("Назад", callback_data="back_to_devices")]
         ]
 
         # Отправляем фото с caption и клавиатурой
@@ -206,12 +203,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Удаляем предыдущее сообщение с выбором устройства
         await query.delete_message()
 
-    # Заглушки для будущих кнопок (пока ничего не делают, но можно добавить обработку позже)
+    elif query.data == "back_to_devices":
+        # Возвращаемся к выбору устройства без префикса
+        await send_device_selection(chat_id=query.message.chat_id, context=context, text_prefix="")
+        # Удаляем предыдущее сообщение
+        await query.delete_message()
+
+    # Заглушка для "перенести подписку"
     elif query.data.startswith("transfer_"):
         await query.edit_message_text("Функция переноса подписки пока не реализована.")
 
+    # Реализация для "подключить вручную"
     elif query.data.startswith("manual_"):
-        await query.edit_message_text("Функция ручного подключения пока не реализована.")
+        user_info = users_data.get(user_id, {})
+        vpn_config_link = user_info.get("vpn_config_link")
+        if vpn_config_link:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=f"Загрузите ссылку в приложение\n`{vpn_config_link}`",
+                parse_mode="Markdown"
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="VPN-ссылка не найдена."
+            )
+        # Не удаляем предыдущее сообщение, чтобы пользователь мог вернуться назад
 
 # ===== ЗАПУСК =====
 def main():
