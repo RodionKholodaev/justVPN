@@ -17,6 +17,12 @@ DATA_FILE = os.getenv("DATA_FILE", "users.json")
 vpn_link=os.getenv("vpn_link")
 
 
+# Пути к фотографиям приложений (замените на реальные пути к файлам после загрузки изображений)
+ANDROID_PHOTO_PATH = "android.jpg"  # Загрузите фото V2RayTun
+WINDOWS_PHOTO_PATH = "windows.png"  # Загрузите фото Hiddify
+IOS_PHOTO_PATH = "ios.jpg"  # Загрузите фото Streisand
+MACOS_PHOTO_PATH = "macos.jpg"  # Загрузите фото Streisand (то же, что и для iOS)
+
 # ===== ХРАНИЛКА =====
 try:
     with open(DATA_FILE, "r") as f:
@@ -27,6 +33,20 @@ except FileNotFoundError:
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(users_data, f, indent=2)
+
+# ===== ФУНКЦИЯ ДЛЯ ОТПРАВКИ СООБЩЕНИЯ С ВЫБОРОМ УСТРОЙСТВА =====
+async def send_device_selection(chat_id: int, context: ContextTypes.DEFAULT_TYPE, text_prefix: str = ""):
+    keyboard = [
+        [InlineKeyboardButton("Android", callback_data="device_android")],
+        [InlineKeyboardButton("Windows", callback_data="device_windows")],
+        [InlineKeyboardButton("iOS", callback_data="device_ios")],
+        [InlineKeyboardButton("macOS", callback_data="device_macos")]
+    ]
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"{text_prefix}На каком устройстве вам нужно подключить VPN?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 # ===== ОБРАБОТЧИКИ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,33 +128,90 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         end_date = (datetime.now() + timedelta(days=plan["days"])).strftime("%Y-%m-%d")
 
-
         users_data[target_user_id]["is_paid"] = True
         users_data[target_user_id]["subscription_end"] = end_date
         users_data[target_user_id]["vpn_config_link"] = vpn_link
         save_data()
 
-        await context.bot.send_message(
-            chat_id=int(target_user_id),
-            text=(
-                f"✅ Оплата подтверждена!\n"
-                f"Подписка активна до {end_date}.\n\n"
-                f"Ваша VPN ссылка (нажмите, чтобы скопировать):\n`{vpn_link}`"
-            ),
-            parse_mode="Markdown"
+        # Отправляем подтверждение и сразу спрашиваем о устройстве
+        text_prefix = (
+            f"✅ Оплата подтверждена!\n"
+            f"Подписка активна до {end_date}.\n\n"
+            f"Ваша VPN ссылка (нажмите, чтобы скопировать):\n`{vpn_link}`\n\n"
         )
+        await send_device_selection(chat_id=int(target_user_id), context=context, text_prefix=text_prefix)
         await query.edit_message_text("Платёж подтвержден ✅")
 
     elif query.data == "my_sub":
         user_info = users_data.get(user_id, {})
         if user_info.get("is_paid"):
-            await query.edit_message_text(
+            text_prefix = (
                 f"📅 Подписка активна до {user_info['subscription_end']}\n\n"
-                f"🔗 Ваша ссылка (нажмите, чтобы скопировать):\n`{user_info['vpn_config_link']}`",
-                parse_mode="Markdown"
+                f"🔗 Ваша ссылка (нажмите, чтобы скопировать):\n`{user_info['vpn_config_link']}`\n\n"
             )
+            # Отправляем новое сообщение с выбором устройства (поскольку edit_message_text не позволяет добавить клавиатуру отдельно)
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=text_prefix + "На каком устройстве вам нужно подключить VPN?",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Android", callback_data="device_android")],
+                    [InlineKeyboardButton("Windows", callback_data="device_windows")],
+                    [InlineKeyboardButton("iOS", callback_data="device_ios")],
+                    [InlineKeyboardButton("macOS", callback_data="device_macos")]
+                ])
+            )
+            # Удаляем оригинальное сообщение с кнопкой, чтобы избежать дубликатов
+            await query.delete_message()
         else:
             await query.edit_message_text("У вас нет активной подписки.")
+
+    elif query.data.startswith("device_"):
+        device = query.data.split("_")[1]
+        app_name = ""
+        app_link = ""
+        photo_path = ""
+
+        if device == "android":
+            app_name = "V2RayTun"
+            app_link = "https://play.google.com/store/apps/details?id=com.v2raytun.android"
+            photo_path = ANDROID_PHOTO_PATH
+        elif device == "windows":
+            app_name = "Hiddify"
+            app_link = "https://apps.microsoft.com/detail/9pdfnl3qv2s5"
+            photo_path = WINDOWS_PHOTO_PATH
+        elif device == "ios":
+            app_name = "Streisand"
+            app_link = "https://apps.apple.com/us/app/streisand/id6450534064"
+            photo_path = IOS_PHOTO_PATH
+        elif device == "macos":
+            app_name = "Streisand"
+            app_link = "https://apps.apple.com/us/app/streisand/id6450534064"
+            photo_path = MACOS_PHOTO_PATH
+
+        # Кнопки под фото
+        keyboard = [
+            [InlineKeyboardButton(f"Скачать {app_name}", url=app_link)],
+            [InlineKeyboardButton("Перенести подписку", callback_data=f"transfer_{device}")],  # Заглушка для будущего
+            [InlineKeyboardButton("Подключить вручную", callback_data=f"manual_{device}")]  # Заглушка для будущего
+        ]
+
+        # Отправляем фото с caption и клавиатурой
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(photo_path, "rb"),
+            caption=f"Скачайте {app_name}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        # Удаляем предыдущее сообщение с выбором устройства
+        await query.delete_message()
+
+    # Заглушки для будущих кнопок (пока ничего не делают, но можно добавить обработку позже)
+    elif query.data.startswith("transfer_"):
+        await query.edit_message_text("Функция переноса подписки пока не реализована.")
+
+    elif query.data.startswith("manual_"):
+        await query.edit_message_text("Функция ручного подключения пока не реализована.")
 
 # ===== ЗАПУСК =====
 def main():
